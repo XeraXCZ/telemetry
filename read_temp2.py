@@ -1,48 +1,40 @@
-import os
-import time
 import spidev
+import time
 from datetime import datetime
-import Adafruit_GPIO as GPIO
-import Adafruit_GPIO.SPI as SPI
+import re
 
-# Initialize hardware SPI (SPI0) for the first MAX6675
-spi0 = spidev.SpiDev()
-spi0.open(0, 0)  # bus 0, device 0 (CS0)
-spi0.max_speed_hz = 5000
+# Start date for file naming
+startdate = datetime.now()
+filename = re.sub('[-: ]', '', str(startdate)[:-7])
 
-# Initialize software SPI for the second MAX6675
-gpio = GPIO.get_platform_gpio()
-spi1 = SPI.BitBang(gpio, 24, 10, 23, 25)  # 10 is used as dummy MOSI pin
+# Setup hardware SPI
+spi1 = spidev.SpiDev(0, 0)  # Bus 0, Device 0 (CS0)
+spi2 = spidev.SpiDev(0, 1)  # Bus 0, Device 1 (CS1)
+spi1.max_speed_hz = 50000
+spi2.max_speed_hz = 50000
 
-def read_temp_hardware(spi_device):
-    # Read 2 bytes of data from the MAX6675
-    raw = spi_device.xfer2([0x00, 0x00])
-    value = (raw[0] << 8) | raw[1]
-    # Remove the lower 3 bits (status bits)
-    value >>= 3
-    # Convert to Celsius (each bit represents 0.25 degrees Celsius)
-    temp_c = value * 0.25
-    return temp_c
+file = f"/home/rajda/data/{filename}"
 
 def read_temp_software(spi_device):
-    # Read 2 bytes of data from the MAX6675 using software SPI
-    raw = spi_device.transfer([0x00, 0x00])
+    raw = spi_device.xfer2([0x00, 0x00])
     value = (raw[0] << 8) | raw[1]
-    # Remove the lower 3 bits (status bits)
     value >>= 3
-    # Convert to Celsius (each bit represents 0.25 degrees Celsius)
     temp_c = value * 0.25
     return temp_c
 
 try:
     while True:
-        motor = read_temp_hardware(spi0)
-        oil = read_temp_software(spi1)
-        dt = datetime.now()
-        print(f"{dt},{oil},{motor}")
-        #print("Oil: {:.2f} °C".format(oil))
-        #print("Motor: {:.2f} °C".format(motor))
+        temperature1 = read_temp_software(spi1)
+        temperature2 = read_temp_software(spi2)
+        dt = str(datetime.now())[:-7]
+        with open(f"{file}", "a") as f:
+            f.write(f"{dt},{temperature1},{temperature2}\n")
+        with open("/home/rajda/data/telemetry.prom", "w") as telemetry_file:
+            telemetry_file.write(f"temperature_one {temperature1}\n")
+            #telemetry_file.write(f"{dt},{temperature1},{temperature2}")
+        #print(f"{dt},{temperature1},{temperature2}")
         time.sleep(1)
 except KeyboardInterrupt:
-    spi0.close()
-
+    spi1.close()
+    spi2.close()
+    print("Program interrupted")
